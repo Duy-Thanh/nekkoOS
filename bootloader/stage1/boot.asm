@@ -1,0 +1,149 @@
+; nekkoOS Stage 1 Bootloader (MBR)
+; 32-bit Operating System Bootstrap
+; This code fits in the Master Boot Record (512 bytes)
+
+[BITS 16]                   ; 16-bit real mode
+[ORG 0x7C00]               ; BIOS loads us at 0x7C00
+
+; Constants
+STAGE2_LOAD_SEGMENT equ 0x1000  ; Load stage2 at 0x10000
+STAGE2_LOAD_OFFSET  equ 0x0000
+STAGE2_START_LBA    equ 1       ; Stage2 starts at LBA 1
+STAGE2_SECTOR_COUNT equ 16      ; Stage2 size in sectors
+
+start:
+    ; Initialize segments and stack
+    cli                     ; Disable interrupts
+    xor ax, ax             ; Zero AX
+    mov ds, ax             ; Data segment = 0
+    mov es, ax             ; Extra segment = 0
+    mov ss, ax             ; Stack segment = 0
+    mov sp, 0x7C00         ; Stack pointer below bootloader
+    sti                    ; Re-enable interrupts
+
+    ; Clear screen
+    mov ah, 0x00           ; Video mode function
+    mov al, 0x03           ; 80x25 text mode
+    int 0x10               ; BIOS video interrupt
+
+    ; Display boot message
+    mov si, msg_booting
+    call print_string
+
+    ; Store boot drive number
+    mov [boot_drive], dl
+
+    ; Load Stage 2 bootloader
+    call load_stage2
+
+    ; Jump to Stage 2
+    jmp STAGE2_LOAD_SEGMENT:STAGE2_LOAD_OFFSET
+
+; Function: print_string
+; Input: SI = pointer to null-terminated string
+print_string:
+    mov ah, 0x0E           ; Teletype output function
+.loop:
+    lodsb                  ; Load byte from SI into AL
+    cmp al, 0              ; Check for null terminator
+    je .done
+    int 0x10               ; BIOS video interrupt
+    jmp .loop
+.done:
+    ret
+
+; Function: load_stage2
+; Loads Stage 2 bootloader from disk using LBA addressing
+load_stage2:
+    ; Check if LBA is supported
+    mov ah, 0x41           ; Check extensions present
+    mov bx, 0x55AA         ; Magic number
+    mov dl, [boot_drive]   ; Drive number
+    int 0x13               ; BIOS disk interrupt
+    jc .use_chs           ; If carry set, use CHS instead
+
+    ; Use LBA to load Stage 2
+    mov si, msg_loading_lba
+    call print_string
+
+    ; Setup DAP (Disk Address Packet)
+    mov word [dap_size], 0x10           ; Size of DAP
+    mov word [dap_sectors], STAGE2_SECTOR_COUNT
+    mov word [dap_offset], STAGE2_LOAD_OFFSET
+    mov word [dap_segment], STAGE2_LOAD_SEGMENT
+    mov dword [dap_lba_low], STAGE2_START_LBA
+    mov dword [dap_lba_high], 0
+
+    ; Read sectors using LBA
+    mov ah, 0x42           ; Extended read
+    mov dl, [boot_drive]   ; Drive number
+    mov si, dap            ; DAP address
+    int 0x13               ; BIOS disk interrupt
+    jc .disk_error
+
+    mov si, msg_loaded
+    call print_string
+    ret
+
+.use_chs:
+    ; Fallback to CHS addressing (simplified)
+    mov si, msg_loading_chs
+    call print_string
+
+    ; Convert LBA to CHS (simplified for floppy)
+    ; For now, assume standard floppy geometry
+    mov ax, STAGE2_LOAD_SEGMENT
+    mov es, ax
+    mov bx, STAGE2_LOAD_OFFSET
+
+    mov ah, 0x02           ; Read sectors function
+    mov al, STAGE2_SECTOR_COUNT  ; Number of sectors
+    mov ch, 0              ; Cylinder 0
+    mov cl, 2              ; Sector 2 (1-based)
+    mov dh, 0              ; Head 0
+    mov dl, [boot_drive]   ; Drive number
+    int 0x13               ; BIOS disk interrupt
+    jc .disk_error
+
+    mov si, msg_loaded
+    call print_string
+    ret
+
+.disk_error:
+    mov si, msg_disk_error
+    call print_string
+    jmp halt
+
+; Function: halt
+; Halts the system
+halt:
+    mov si, msg_halted
+    call print_string
+    cli                    ; Disable interrupts
+    hlt                    ; Halt processor
+    jmp halt               ; Infinite loop
+
+; Data section
+boot_drive:     db 0
+
+; Disk Address Packet for LBA reading
+dap:
+dap_size:       dw 0x10    ; Size of DAP
+dap_reserved:   dw 0       ; Reserved
+dap_sectors:    dw 0       ; Number of sectors to read
+dap_offset:     dw 0       ; Offset to load to
+dap_segment:    dw 0       ; Segment to load to
+dap_lba_low:    dd 0       ; Lower 32 bits of LBA
+dap_lba_high:   dd 0       ; Upper 32 bits of LBA
+
+; String messages
+msg_booting:     db 'nekkoOS Stage 1 Bootloader', 0x0D, 0x0A, 0
+msg_loading_lba: db 'Loading Stage 2 (LBA)...', 0x0D, 0x0A, 0
+msg_loading_chs: db 'Loading Stage 2 (CHS)...', 0x0D, 0x0A, 0
+msg_loaded:      db 'Stage 2 loaded successfully!', 0x0D, 0x0A, 0
+msg_disk_error:  db 'Disk read error!', 0x0D, 0x0A, 0
+msg_halted:      db 'System halted.', 0x0D, 0x0A, 0
+
+; Pad to 510 bytes and add boot signature
+times 510-($-$$) db 0      ; Pad with zeros
+dw 0xAA55                  ; Boot signature
