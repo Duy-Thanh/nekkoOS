@@ -5,59 +5,10 @@
  * This file contains the main kernel initialization and core functions
  */
 
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
-
-/* VGA text mode constants */
-#define VGA_WIDTH 80
-#define VGA_HEIGHT 25
-#define VGA_MEMORY 0xB8000
-
-/* VGA color constants */
-enum vga_color {
-    VGA_COLOR_BLACK = 0,
-    VGA_COLOR_BLUE = 1,
-    VGA_COLOR_GREEN = 2,
-    VGA_COLOR_CYAN = 3,
-    VGA_COLOR_RED = 4,
-    VGA_COLOR_MAGENTA = 5,
-    VGA_COLOR_BROWN = 6,
-    VGA_COLOR_LIGHT_GREY = 7,
-    VGA_COLOR_DARK_GREY = 8,
-    VGA_COLOR_LIGHT_BLUE = 9,
-    VGA_COLOR_LIGHT_GREEN = 10,
-    VGA_COLOR_LIGHT_CYAN = 11,
-    VGA_COLOR_LIGHT_RED = 12,
-    VGA_COLOR_LIGHT_MAGENTA = 13,
-    VGA_COLOR_LIGHT_BROWN = 14,
-    VGA_COLOR_WHITE = 15,
-};
-
-/* Multiboot information structure */
-struct multiboot_info {
-    uint32_t flags;
-    uint32_t mem_lower;
-    uint32_t mem_upper;
-    uint32_t boot_device;
-    uint32_t cmdline;
-    uint32_t mods_count;
-    uint32_t mods_addr;
-    uint32_t syms[4];
-    uint32_t mmap_length;
-    uint32_t mmap_addr;
-    uint32_t drives_length;
-    uint32_t drives_addr;
-    uint32_t config_table;
-    uint32_t boot_loader_name;
-    uint32_t apm_table;
-    uint32_t vbe_control_info;
-    uint32_t vbe_mode_info;
-    uint16_t vbe_mode;
-    uint16_t vbe_interface_seg;
-    uint16_t vbe_interface_off;
-    uint16_t vbe_interface_len;
-};
+#include "types.h"
+#include "vga.h"
+#include "multiboot.h"
+#include "string.h"
 
 /* Global variables */
 static uint16_t* const vga_buffer = (uint16_t*)VGA_MEMORY;
@@ -73,29 +24,46 @@ void terminal_putchar(char c);
 void terminal_write(const char* data, size_t size);
 void terminal_writestring(const char* data);
 void kprintf(const char* format, ...);
-static inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg);
-static inline uint16_t vga_entry(unsigned char uc, uint8_t color);
-size_t strlen(const char* str);
+void kprintf_hex(uint32_t value);
+void kprintf_dec(uint32_t value);
 void init_gdt(void);
 void init_idt(void);
 void init_memory(struct multiboot_info* mboot_info);
 void init_interrupts(void);
 
-/* String length function */
-size_t strlen(const char* str) {
-    size_t len = 0;
-    while (str[len])
-        len++;
-    return len;
+
+
+/* Number to string conversion functions */
+void uint_to_hex_string(uint32_t value, char* buffer) {
+    const char hex_chars[] = "0123456789ABCDEF";
+    buffer[0] = '0';
+    buffer[1] = 'x';
+    
+    for (int i = 7; i >= 0; i--) {
+        buffer[2 + (7 - i)] = hex_chars[(value >> (i * 4)) & 0xF];
+    }
+    buffer[10] = '\0';
 }
 
-/* VGA helper functions */
-static inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg) {
-    return fg | bg << 4;
-}
-
-static inline uint16_t vga_entry(unsigned char uc, uint8_t color) {
-    return (uint16_t) uc | (uint16_t) color << 8;
+void uint_to_dec_string(uint32_t value, char* buffer) {
+    if (value == 0) {
+        buffer[0] = '0';
+        buffer[1] = '\0';
+        return;
+    }
+    
+    char temp[12];
+    int i = 0;
+    
+    while (value > 0) {
+        temp[i++] = '0' + (value % 10);
+        value /= 10;
+    }
+    
+    for (int j = 0; j < i; j++) {
+        buffer[j] = temp[i - 1 - j];
+    }
+    buffer[i] = '\0';
 }
 
 /* Terminal functions */
@@ -167,15 +135,37 @@ void kprintf(const char* format, ...) {
     terminal_writestring(format);
 }
 
+/* Print hexadecimal number */
+void kprintf_hex(uint32_t value) {
+    char buffer[11];
+    uint_to_hex_string(value, buffer);
+    terminal_writestring(buffer);
+}
+
+/* Print decimal number */
+void kprintf_dec(uint32_t value) {
+    char buffer[12];
+    uint_to_dec_string(value, buffer);
+    terminal_writestring(buffer);
+}
+
 /* Memory initialization */
 void init_memory(struct multiboot_info* mboot_info) {
     kprintf("Initializing memory management...\n");
     
-    if (mboot_info->flags & 0x1) {
+    if (mboot_info->flags & MULTIBOOT_INFO_MEMORY) {
         kprintf("Memory: Lower = ");
-        // TODO: Convert numbers to strings
+        kprintf_dec(mboot_info->mem_lower);
         kprintf("KB, Upper = ");
+        kprintf_dec(mboot_info->mem_upper);
         kprintf("KB\n");
+        
+        uint32_t total_memory = mboot_info->mem_lower + mboot_info->mem_upper;
+        kprintf("Total conventional memory: ");
+        kprintf_dec(total_memory);
+        kprintf("KB (");
+        kprintf_dec(total_memory / 1024);
+        kprintf("MB)\n");
     }
     
     kprintf("Memory management initialized.\n");
@@ -215,11 +205,13 @@ void kernel_main(uint32_t magic, struct multiboot_info* mboot_info) {
     kprintf("==================\n\n");
     
     /* Check multiboot magic */
-    if (magic != 0x2BADB002) {
+    if (magic != MULTIBOOT_BOOTLOADER_MAGIC) {
         terminal_setcolor(vga_entry_color(VGA_COLOR_LIGHT_RED, VGA_COLOR_BLACK));
         kprintf("ERROR: Invalid multiboot magic number!\n");
-        kprintf("Expected: 0x2BADB002, Got: 0x");
-        // TODO: Print hex number
+        kprintf("Expected: ");
+        kprintf_hex(MULTIBOOT_BOOTLOADER_MAGIC);
+        kprintf(", Got: ");
+        kprintf_hex(magic);
         kprintf("\n");
         goto halt;
     }
@@ -248,7 +240,7 @@ void kernel_main(uint32_t magic, struct multiboot_info* mboot_info) {
     kprintf("\nKernel initialization complete!\n");
     kprintf("===============================\n");
     
-    terminal_setcolor(vga_entry_color(VGA_COLOR_YELLOW, VGA_COLOR_BLACK));
+    terminal_setcolor(vga_entry_color(VGA_COLOR_LIGHT_BROWN, VGA_COLOR_BLACK));
     kprintf("\nSystem ready. Entering idle loop...\n");
     
     /* Main kernel loop */

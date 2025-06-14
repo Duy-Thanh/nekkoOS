@@ -56,7 +56,7 @@ help:
 
 # Create build directory
 $(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+	@if not exist "$(BUILD_DIR)" mkdir "$(BUILD_DIR)"
 
 # Build bootloader
 bootloader: $(BUILD_DIR)
@@ -76,23 +76,20 @@ userspace: $(BUILD_DIR)
 # Create OS disk image
 image: bootloader kernel $(BUILD_DIR)
 	@echo "Creating OS disk image..."
-	# Create empty disk image
-	dd if=/dev/zero of=$(OS_IMAGE) bs=512 count=65536
-	# Write bootloader to first sector
-	dd if=$(BOOTLOADER_BIN) of=$(OS_IMAGE) bs=512 count=1 conv=notrunc
-	# Mount and copy kernel (requires loop device support)
-	# For Windows, we'll use a simpler approach
+	@fsutil file createnew "$(OS_IMAGE)" 33554432 >nul
+	@echo "Writing bootloader to disk image..."
+	@powershell -Command "$$bootloader = [System.IO.File]::ReadAllBytes('$(BOOTLOADER_BIN)'); $$image = [System.IO.File]::ReadAllBytes('$(OS_IMAGE)'); [Array]::Copy($$bootloader, 0, $$image, 0, [Math]::Min($$bootloader.Length, 512)); [System.IO.File]::WriteAllBytes('$(OS_IMAGE)', $$image)"
 	@echo "Disk image created: $(OS_IMAGE)"
 
 # Create ISO image using GRUB
 iso: kernel $(BUILD_DIR)
 	@echo "Creating ISO image..."
-	mkdir -p $(ISO_DIR)/boot/grub
-	cp $(KERNEL_BIN) $(ISO_DIR)/boot/kernel.bin
-	echo 'menuentry "nekkoOS" {' > $(ISO_DIR)/boot/grub/grub.cfg
-	echo '    multiboot /boot/kernel.bin' >> $(ISO_DIR)/boot/grub/grub.cfg
-	echo '}' >> $(ISO_DIR)/boot/grub/grub.cfg
-	grub-mkrescue -o $(OS_ISO) $(ISO_DIR)
+	@if not exist "$(ISO_DIR)\boot\grub" mkdir "$(ISO_DIR)\boot\grub"
+	@copy "$(KERNEL_BIN)" "$(ISO_DIR)\boot\kernel.bin" >nul
+	@echo menuentry "nekkoOS" { > "$(ISO_DIR)\boot\grub\grub.cfg"
+	@echo     multiboot /boot/kernel.bin >> "$(ISO_DIR)\boot\grub\grub.cfg"
+	@echo } >> "$(ISO_DIR)\boot\grub\grub.cfg"
+	@grub-mkrescue -o "$(OS_ISO)" "$(ISO_DIR)"
 	@echo "ISO image created: $(OS_ISO)"
 
 # Run OS in QEMU
@@ -114,18 +111,18 @@ debug: image
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -rf $(BUILD_DIR)
-	$(MAKE) -C $(BOOTLOADER_DIR) clean
-	$(MAKE) -C $(KERNEL_DIR) clean
-	$(MAKE) -C $(USERSPACE_DIR) clean
+	@if exist "$(BUILD_DIR)" rmdir /s /q "$(BUILD_DIR)" >nul 2>&1
+	@$(MAKE) -C $(BOOTLOADER_DIR) clean
+	@$(MAKE) -C $(KERNEL_DIR) clean
+	@$(MAKE) -C $(USERSPACE_DIR) clean
 	@echo "Clean complete."
 
 # Check toolchain
 check-toolchain:
 	@echo "Checking toolchain..."
-	@which $(CC) > /dev/null || (echo "Error: $(CC) not found in PATH" && exit 1)
-	@which $(AS) > /dev/null || (echo "Error: $(AS) not found in PATH" && exit 1)
-	@which $(LD) > /dev/null || (echo "Error: $(LD) not found in PATH" && exit 1)
+	@where $(CC) >nul 2>&1 || (echo "Error: $(CC) not found in PATH" && exit 1)
+	@where $(AS) >nul 2>&1 || (echo "Error: $(AS) not found in PATH" && exit 1)
+	@where $(LD) >nul 2>&1 || (echo "Error: $(LD) not found in PATH" && exit 1)
 	@echo "Toolchain check passed."
 
 # Install dependencies (placeholder)

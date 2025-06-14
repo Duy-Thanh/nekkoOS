@@ -1,4 +1,4 @@
-# Bootloader Makefile
+# Bootloader Makefile for Windows
 # Builds Stage 1 (MBR) and Stage 2 bootloaders
 
 # Tools
@@ -30,7 +30,7 @@ all: $(BOOTLOADER_BIN)
 
 # Create build directory
 $(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+	@if not exist "$(BUILD_DIR)" mkdir "$(BUILD_DIR)"
 
 # Build Stage 1 bootloader
 stage1: $(STAGE1_BIN)
@@ -51,22 +51,21 @@ $(STAGE2_BIN): $(STAGE2_SRC) $(BUILD_DIR)
 # Combine bootloaders into single file
 $(BOOTLOADER_BIN): $(STAGE1_BIN) $(STAGE2_BIN)
 	@echo "Combining bootloader stages..."
-	cp $(STAGE1_BIN) $(BOOTLOADER_BIN)
-	# Pad stage1 to exactly 512 bytes
-	truncate -s 512 $(BOOTLOADER_BIN) 2>/dev/null || (dd if=/dev/zero bs=512 count=1 of=$(BOOTLOADER_BIN).tmp && dd if=$(STAGE1_BIN) of=$(BOOTLOADER_BIN).tmp conv=notrunc && mv $(BOOTLOADER_BIN).tmp $(BOOTLOADER_BIN))
-	# Append stage2
-	cat $(STAGE2_BIN) >> $(BOOTLOADER_BIN)
+	@cd .. && cmd /c "copy /b build\stage1.bin + build\stage2.bin build\bootloader.bin"
 	@echo "Combined bootloader built: $(BOOTLOADER_BIN)"
 
 # Clean build artifacts
 clean:
 	@echo "Cleaning bootloader build artifacts..."
-	rm -f $(STAGE1_BIN) $(STAGE2_BIN) $(BOOTLOADER_BIN)
+	@if exist "$(STAGE1_BIN)" del "$(STAGE1_BIN)" >nul 2>&1
+	@if exist "$(STAGE2_BIN)" del "$(STAGE2_BIN)" >nul 2>&1
+	@if exist "$(BOOTLOADER_BIN)" del "$(BOOTLOADER_BIN)" >nul 2>&1
 
 # Check if NASM is available
 check-nasm:
-	@which $(NASM) > /dev/null || (echo "Error: NASM not found. Please install NASM assembler." && exit 1)
-	@echo "NASM found: $(shell $(NASM) -v)"
+	@where $(NASM) >nul 2>&1 || (echo "Error: NASM not found. Please install NASM assembler." && exit 1)
+	@echo "NASM found:"
+	@$(NASM) -v
 
 # Show bootloader info
 info:
@@ -76,3 +75,11 @@ info:
 	@echo "Stage 1 src:  $(STAGE1_SRC)"
 	@echo "Stage 2 src:  $(STAGE2_SRC)"
 	@echo "Output:       $(BOOTLOADER_BIN)"
+
+# Size information
+size: $(BOOTLOADER_BIN)
+	@echo "Bootloader Size Information:"
+	@echo "============================"
+	@if exist "$(STAGE1_BIN)" (for %%I in ("$(STAGE1_BIN)") do echo "Stage 1: %%~zI bytes")
+	@if exist "$(STAGE2_BIN)" (for %%I in ("$(STAGE2_BIN)") do echo "Stage 2: %%~zI bytes")
+	@if exist "$(BOOTLOADER_BIN)" (for %%I in ("$(BOOTLOADER_BIN)") do echo "Total: %%~zI bytes")
