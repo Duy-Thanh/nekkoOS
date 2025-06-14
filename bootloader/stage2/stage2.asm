@@ -16,6 +16,9 @@ GDT_CODE_SEG        equ 0x08        ; Code segment selector
 GDT_DATA_SEG        equ 0x10        ; Data segment selector
 
 start_stage2:
+    ; Store boot drive number passed from Stage 1
+    mov [boot_drive], dl
+    
     ; Setup segments
     mov ax, 0x1000
     mov ds, ax

@@ -73,7 +73,11 @@ $(KERNEL_ELF): $(OBJECTS) $(BUILD_DIR)
 # Clean build artifacts
 clean:
 	@echo "Cleaning kernel build artifacts..."
-	rm -f $(OBJECTS) $(KERNEL_ELF) $(KERNEL_BIN)
+	@if exist "kernel.o" del "kernel.o" >nul 2>&1
+	@if exist "string.o" del "string.o" >nul 2>&1
+	@if exist "arch\i386\boot.o" del "arch\i386\boot.o" >nul 2>&1
+	@if exist "$(KERNEL_ELF)" del "$(KERNEL_ELF)" >nul 2>&1
+	@if exist "$(KERNEL_BIN)" del "$(KERNEL_BIN)" >nul 2>&1
 	@echo "Kernel clean complete."
 
 # Show kernel disassembly

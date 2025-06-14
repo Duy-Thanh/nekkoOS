@@ -36,6 +36,9 @@ start:
     ; Load Stage 2 bootloader
     call load_stage2
 
+    ; Pass boot drive number to Stage 2 in DL register
+    mov dl, [boot_drive]
+
     ; Jump to Stage 2
     jmp STAGE2_LOAD_SEGMENT:STAGE2_LOAD_OFFSET
 
