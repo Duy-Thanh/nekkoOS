@@ -75,9 +75,9 @@ userspace: $(BUILD_DIR)
 
 # Create OS disk image
 image: bootloader kernel $(BUILD_DIR)
-	@echo "Creating OS disk image..."
-	@create_disk.bat
-	@echo "Disk image created: $(OS_IMAGE)"
+	@echo "Creating FAT12 disk image..."
+	@python create_fat12.py $(BUILD_DIR)
+	@echo "FAT12 disk image created: $(OS_IMAGE)"
 
 # Create ISO image using GRUB
 iso: kernel $(BUILD_DIR)
