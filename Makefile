@@ -76,13 +76,7 @@ userspace: $(BUILD_DIR)
 # Create OS disk image
 image: bootloader kernel $(BUILD_DIR)
 	@echo "Creating OS disk image..."
-	@fsutil file createnew "$(OS_IMAGE)" 33554432 >nul
-	@echo "Writing Stage 1 bootloader (sector 0)..."
-	@powershell -Command "$$stage1 = [System.IO.File]::ReadAllBytes('$(BUILD_DIR)/stage1.bin'); $$image = [System.IO.File]::ReadAllBytes('$(OS_IMAGE)'); [Array]::Copy($$stage1, 0, $$image, 0, 512); [System.IO.File]::WriteAllBytes('$(OS_IMAGE)', $$image)"
-	@echo "Writing Stage 2 bootloader (sectors 1-16)..."
-	@powershell -Command "$$stage2 = [System.IO.File]::ReadAllBytes('$(BUILD_DIR)/stage2.bin'); $$image = [System.IO.File]::ReadAllBytes('$(OS_IMAGE)'); [Array]::Copy($$stage2, 0, $$image, 512, $$stage2.Length); [System.IO.File]::WriteAllBytes('$(OS_IMAGE)', $$image)"
-	@echo "Writing kernel (sectors 17+)..."
-	@powershell -Command "$$kernel = [System.IO.File]::ReadAllBytes('$(KERNEL_BIN)'); $$image = [System.IO.File]::ReadAllBytes('$(OS_IMAGE)'); [Array]::Copy($$kernel, 0, $$image, 8704, $$kernel.Length); [System.IO.File]::WriteAllBytes('$(OS_IMAGE)', $$image)"
+	@create_disk.bat
 	@echo "Disk image created: $(OS_IMAGE)"
 
 # Create ISO image using GRUB
