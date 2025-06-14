@@ -143,7 +143,7 @@ halt:
 
 ; Data
 stage2_name     db 'STAGE2  BIN'
-msg_boot        db 'nekkoOS FAT12', 13, 10, 0
+msg_boot        db 'nekkoOS STA1', 13, 10, 0
 msg_error       db 'Error!', 13, 10, 0
 
 ; DAP structure
